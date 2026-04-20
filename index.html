@@ -700,6 +700,78 @@
   .rawg-setup-prompt a { color: var(--phosphor); text-decoration: underline; }
   .rawg-setup-prompt button { margin-top: 8px; }
 
+  /* Genre tag chips */
+  .genre-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-height: 24px;
+    padding: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .genre-tags:empty::before {
+    content: 'No genres yet';
+    color: var(--text-faint);
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+  }
+  .genre-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--phosphor-dim);
+    color: var(--phosphor);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+  }
+  .genre-chip button {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+  }
+  .genre-chip button:hover { color: var(--red); }
+
+  /* Platform badge */
+  .platform-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 9px;
+    padding: 4px 8px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 700;
+    background: var(--bg);
+    border: 1px solid var(--amber-dim);
+    color: var(--amber);
+  }
+
+  /* Card genre tags (small, inline) */
+  .card-genres {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .card-genre {
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+  }
+
   .toast {
     position: fixed;
     bottom: 24px;
@@ -747,6 +819,9 @@
   title text <span class="kw">not null</span>,
   cover_url text,
   status text <span class="kw">not null default</span> <span class="str">'planned'</span>,
+  platform text,
+  genres text[],
+  started_on date,
   notes text,
   created_at timestamptz <span class="kw">default</span> now()
 );
@@ -857,6 +932,29 @@
           </select>
         </div>
         <div class="field">
+          <label>Platform</label>
+          <select id="gamePlatform">
+            <option value="">— none —</option>
+            <option value="PC">PC</option>
+            <option value="PlayStation">PlayStation</option>
+            <option value="Xbox">Xbox</option>
+            <option value="Nintendo Switch">Nintendo Switch</option>
+            <option value="Mobile">Mobile</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Genres</label>
+        <div class="genre-tags" id="genreTags"></div>
+        <input id="genreInput" type="text" placeholder="Type and press Enter to add a genre" style="margin-top: 6px">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Started Streaming On</label>
+          <input id="gameStartedOn" type="date">
+        </div>
+        <div class="field">
           <label>Cover Image URL</label>
           <input id="gameCover" type="text" placeholder="https://...">
         </div>
@@ -940,6 +1038,7 @@ let sessions = [];
 let editingGameId = null;
 let rawgSearchTimer = null;
 let rawgLastQuery = '';
+let currentGenres = [];
 let editingSessionId = null;
 let currentDetailGameId = null;
 let activeStatus = 'all';
@@ -1109,12 +1208,14 @@ function renderGames() {
   grid.innerHTML = list.map(g => {
     const st = bg[g.id] || { count: 0, last: null, min: 0 };
     const hrs = (st.min/60).toFixed(1);
+    const gs = Array.isArray(g.genres) ? g.genres : [];
     return `
       <div class="card" onclick="openDetail('${g.id}')">
         <div class="cover">
           ${g.cover_url ? `<img src="${escapeAttr(g.cover_url)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
           <div class="no-cover" style="${g.cover_url ? 'display:none' : ''}">?</div>
           <div class="status-badge status-${g.status}">${statusLabel(g.status)}</div>
+          ${g.platform ? `<div class="platform-badge">${escapeHtml(g.platform)}</div>` : ''}
         </div>
         <div class="card-body">
           <div class="card-title">${escapeHtml(g.title)}</div>
@@ -1122,6 +1223,7 @@ function renderGames() {
             <span>${st.count} stream${st.count===1?'':'s'}</span>
             <span>${hrs}h</span>
           </div>
+          ${gs.length ? `<div class="card-genres">${gs.slice(0,3).map(x => `<span class="card-genre">${escapeHtml(x)}</span>`).join('')}</div>` : ''}
         </div>
       </div>
     `;
@@ -1149,17 +1251,25 @@ function openGameModal(id) {
     title.textContent = 'EDIT GAME';
     document.getElementById('gameTitle').value = g.title || '';
     document.getElementById('gameStatus').value = g.status || 'planned';
+    document.getElementById('gamePlatform').value = g.platform || '';
+    document.getElementById('gameStartedOn').value = g.started_on || '';
     document.getElementById('gameCover').value = g.cover_url || '';
     document.getElementById('gameNotes').value = g.notes || '';
+    currentGenres = Array.isArray(g.genres) ? [...g.genres] : [];
     delBtn.style.display = 'inline-flex';
   } else {
     title.textContent = 'NEW GAME';
     document.getElementById('gameTitle').value = '';
     document.getElementById('gameStatus').value = 'planned';
+    document.getElementById('gamePlatform').value = '';
+    document.getElementById('gameStartedOn').value = '';
     document.getElementById('gameCover').value = '';
     document.getElementById('gameNotes').value = '';
+    currentGenres = [];
     delBtn.style.display = 'none';
   }
+  renderGenreTags();
+  document.getElementById('genreInput').value = '';
   modal.classList.add('open');
   setTimeout(() => {
     const input = id ? document.getElementById('gameTitle') : document.getElementById('rawgSearch');
@@ -1260,7 +1370,8 @@ function renderRawgResults(list) {
     const img = g.background_image || '';
     const payload = encodeURIComponent(JSON.stringify({
       title: g.name,
-      cover: img
+      cover: img,
+      genres: (g.genres || []).map(x => x.name)
     }));
     return `<div class="rawg-result" onclick="pickRawgGame('${payload}')">
       ${img ? `<img src="${escapeAttr(img)}" onerror="this.style.visibility='hidden'">` : '<img>'}
@@ -1277,10 +1388,51 @@ function pickRawgGame(payload) {
   const g = JSON.parse(decodeURIComponent(payload));
   document.getElementById('gameTitle').value = g.title || '';
   document.getElementById('gameCover').value = g.cover || '';
+  if (Array.isArray(g.genres) && g.genres.length) {
+    // Merge, dedupe
+    g.genres.forEach(x => {
+      if (!currentGenres.some(y => y.toLowerCase() === x.toLowerCase())) {
+        currentGenres.push(x);
+      }
+    });
+    renderGenreTags();
+  }
   document.getElementById('rawgSearch').value = '';
   document.getElementById('rawgResults').classList.remove('open');
   rawgLastQuery = '';
   toast('Game imported');
+}
+
+// ============================================================
+// GENRE TAGS
+// ============================================================
+function renderGenreTags() {
+  const el = document.getElementById('genreTags');
+  if (!el) return;
+  el.innerHTML = currentGenres.map((g, i) =>
+    `<span class="genre-chip">${escapeHtml(g)}<button type="button" onclick="removeGenre(${i})" title="Remove">×</button></span>`
+  ).join('');
+}
+function addGenre(name) {
+  const clean = (name || '').trim();
+  if (!clean) return;
+  if (currentGenres.some(g => g.toLowerCase() === clean.toLowerCase())) return;
+  currentGenres.push(clean);
+  renderGenreTags();
+}
+function removeGenre(i) {
+  currentGenres.splice(i, 1);
+  renderGenreTags();
+}
+function onGenreKeydown(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addGenre(e.target.value);
+    e.target.value = '';
+  } else if (e.key === 'Backspace' && !e.target.value && currentGenres.length) {
+    currentGenres.pop();
+    renderGenreTags();
+  }
 }
 
 async function saveGame() {
@@ -1289,6 +1441,9 @@ async function saveGame() {
   const payload = {
     title,
     status: document.getElementById('gameStatus').value,
+    platform: document.getElementById('gamePlatform').value || null,
+    genres: currentGenres.length ? currentGenres : null,
+    started_on: document.getElementById('gameStartedOn').value || null,
     cover_url: document.getElementById('gameCover').value.trim() || null,
     notes: document.getElementById('gameNotes').value.trim() || null
   };
@@ -1340,12 +1495,17 @@ function openDetail(id) {
       </div>
       <div class="detail-info">
         <div class="detail-title">${escapeHtml(g.title)}</div>
-        <div class="status-badge status-${g.status}" style="display:inline-block;position:static;margin-bottom:10px">${statusLabel(g.status)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <span class="status-badge status-${g.status}" style="position:static">${statusLabel(g.status)}</span>
+          ${g.platform ? `<span class="platform-badge" style="position:static">${escapeHtml(g.platform)}</span>` : ''}
+        </div>
         <div class="detail-meta">
           <span>▶ ${mySessions.length} session${mySessions.length===1?'':'s'}</span>
           <span>⏱ ${(totalMin/60).toFixed(1)}h</span>
           <span>👁 peak ${peak}</span>
+          ${g.started_on ? `<span>📅 started ${formatDate(g.started_on)}</span>` : ''}
         </div>
+        ${Array.isArray(g.genres) && g.genres.length ? `<div class="card-genres" style="margin-bottom:10px">${g.genres.map(x => `<span class="card-genre">${escapeHtml(x)}</span>`).join('')}</div>` : ''}
         ${g.notes ? `<div class="detail-notes">${escapeHtml(g.notes)}</div>` : ''}
         <div style="margin-top:12px;display:flex;gap:6px">
           <button class="btn btn-sm" onclick="openGameModal('${g.id}')">Edit Game</button>
@@ -1437,6 +1597,12 @@ async function saveSession() {
     } else {
       const { error } = await sb.from('sessions').insert(payload);
       if (error) throw error;
+      // Auto-fill started_on if this is the first session and the field is empty
+      const g = games.find(x => x.id === currentDetailGameId);
+      const existingSessions = sessions.filter(s => s.game_id === currentDetailGameId);
+      if (g && !g.started_on && existingSessions.length === 0) {
+        await sb.from('games').update({ started_on: date }).eq('id', currentDetailGameId);
+      }
       toast('Session logged');
     }
     closeSessionModal();
@@ -1472,6 +1638,12 @@ function statusLabel(s) {
   })[s] || s;
 }
 
+function formatDate(d) {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1499,6 +1671,11 @@ document.addEventListener('keydown', e => {
 function bootstrap() {
   const rawgInput = document.getElementById('rawgSearch');
   if (rawgInput) rawgInput.addEventListener('input', onRawgInput);
+  const genreInput = document.getElementById('genreInput');
+  if (genreInput) {
+    genreInput.addEventListener('keydown', onGenreKeydown);
+    genreInput.addEventListener('blur', e => { if (e.target.value) { addGenre(e.target.value); e.target.value = ''; } });
+  }
   // Close RAWG results if clicking outside
   document.addEventListener('click', e => {
     if (!e.target.closest('.rawg-search-field')) {
