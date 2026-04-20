@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STREAM LOG // Personal Game Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --bg-elev: #15171c;
+    --bg-elev-2: #1c1f26;
+    --border: #2a2e38;
+    --text: #e6e7ea;
+    --text-dim: #8a8f9c;
+    --text-faint: #525762;
+    --phosphor: #7cff6b;
+    --phosphor-dim: #3d7a35;
+    --amber: #ffb43b;
+    --amber-dim: #7a5218;
+    --red: #ff5b5b;
+    --blue: #5bb8ff;
+    --purple: #c77cff;
+    --font-display: 'VT323', monospace;
+    --font-body: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* CRT scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.15) 0px,
+      rgba(0,0,0,0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.35;
+  }
+
+  /* Subtle vignette */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.45) 100%);
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  .app {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* === HEADER === */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+    border-bottom: 1px dashed var(--border);
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .brand h1 {
+    font-family: var(--font-display);
+    font-size: 64px;
+    line-height: 0.9;
+    color: var(--phosphor);
+    text-shadow: 0 0 8px rgba(124, 255, 107, 0.4), 0 0 20px rgba(124, 255, 107, 0.15);
+    letter-spacing: 2px;
+  }
+
+  .brand .blink::after {
+    content: '_';
+    animation: blink 1s steps(2, start) infinite;
+  }
+
+  @keyframes blink { to { visibility: hidden; } }
+
+  .brand p {
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .conn-status {
+    font-size: 10px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text-dim);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .conn-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 6px currentColor;
+  }
+  .conn-status.ok .conn-dot { background: var(--phosphor); }
+
+  /* === BUTTONS === */
+  .btn {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 10px 18px;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn:hover {
+    border-color: var(--phosphor);
+    color: var(--phosphor);
+    box-shadow: 0 0 12px rgba(124,255,107,0.15), inset 0 0 12px rgba(124,255,107,0.05);
+  }
+  .btn-primary {
+    background: var(--phosphor);
+    color: var(--bg);
+    border-color: var(--phosphor);
+    font-weight: 700;
+  }
+  .btn-primary:hover {
+    background: #9dff8c;
+    color: var(--bg);
+    box-shadow: 0 0 20px rgba(124,255,107,0.5);
+  }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); box-shadow: 0 0 12px rgba(255,91,91,0.2); }
+  .btn-ghost { background: transparent; }
+  .btn-sm { padding: 6px 10px; font-size: 10px; }
+
+  /* === STATS DASHBOARD === */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 2px;
+    margin-bottom: 32px;
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+  .stat {
+    background: var(--bg-elev);
+    padding: 20px;
+    position: relative;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 44px;
+    line-height: 1;
+    color: var(--phosphor);
+    text-shadow: 0 0 6px rgba(124,255,107,0.3);
+  }
+  .stat-value.amber { color: var(--amber); text-shadow: 0 0 6px rgba(255,180,59,0.3); }
+  .stat-value.blue { color: var(--blue); text-shadow: 0 0 6px rgba(91,184,255,0.3); }
+  .stat-value.purple { color: var(--purple); text-shadow: 0 0 6px rgba(199,124,255,0.3); }
+  .stat-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  /* === TOOLBAR === */
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .search {
+    flex: 1;
+    min-width: 220px;
+    position: relative;
+  }
+  .search input {
+    width: 100%;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 13px;
+    padding: 10px 14px 10px 36px;
+    letter-spacing: 0.5px;
+  }
+  .search input:focus {
+    outline: none;
+    border-color: var(--phosphor);
+    box-shadow: 0 0 0 1px var(--phosphor), 0 0 12px rgba(124,255,107,0.15);
+  }
+  .search::before {
+    content: '>';
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--phosphor);
+    font-family: var(--font-display);
+    font-size: 18px;
+  }
+  select.filter {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 12px;
+    padding: 10px 14px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  select.filter:focus { outline: none; border-color: var(--phosphor); }
+
+  /* === STATUS FILTER PILLS === */
+  .status-filter {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: all 0.15s;
+  }
+  .pill:hover { color: var(--text); border-color: var(--text-dim); }
+  .pill.active {
+    background: var(--phosphor);
+    color: var(--bg);
+    border-color: var(--phosphor);
+    font-weight: 700;
+  }
+  .pill .count {
+    margin-left: 6px;
+    opacity: 0.7;
+  }
+
+  /* === GAME GRID === */
+  .games {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .card:hover {
+    border-color: var(--phosphor);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(124,255,107,0.08);
+  }
+  .cover {
+    aspect-ratio: 3 / 4;
+    background: linear-gradient(135deg, var(--bg-elev-2), var(--bg));
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cover img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .cover .no-cover {
+    font-family: var(--font-display);
+    font-size: 48px;
+    color: var(--text-faint);
+    letter-spacing: 4px;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.08) 0px, rgba(0,0,0,0.08) 1px, transparent 1px, transparent 3px);
+    pointer-events: none;
+  }
+  .status-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: 9px;
+    padding: 4px 8px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 700;
+    background: var(--bg);
+    border: 1px solid currentColor;
+  }
+  .status-playing { color: var(--phosphor); }
+  .status-completed { color: var(--blue); }
+  .status-dropped { color: var(--red); }
+  .status-hold { color: var(--amber); }
+  .status-variety { color: var(--purple); }
+  .status-planned { color: var(--text-dim); }
+
+  .card-body {
+    padding: 12px 14px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 22px;
+    line-height: 1.1;
+    color: var(--text);
+    letter-spacing: 1px;
+  }
+  .card-meta {
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .card-meta span::before {
+    content: '■ ';
+    color: var(--phosphor-dim);
+  }
+
+  .empty {
+    grid-column: 1 / -1;
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-faint);
+    border: 1px dashed var(--border);
+  }
+  .empty h3 {
+    font-family: var(--font-display);
+    font-size: 32px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+  }
+
+  /* === MODAL === */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 20px;
+    z-index: 1000;
+    overflow-y: auto;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    max-width: 720px;
+    width: 100%;
+    padding: 0;
+    position: relative;
+    animation: modalIn 0.2s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .modal-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-elev-2);
+  }
+  .modal-head h2 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    color: var(--phosphor);
+    letter-spacing: 2px;
+    text-shadow: 0 0 6px rgba(124,255,107,0.3);
+  }
+  .close-x {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: var(--font-display);
+    font-size: 28px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 8px;
+  }
+  .close-x:hover { color: var(--red); }
+  .modal-body { padding: 20px; }
+
+  /* === FORMS === */
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .field input, .field textarea, .field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    outline: none;
+    border-color: var(--phosphor);
+    box-shadow: 0 0 0 1px var(--phosphor);
+  }
+  .field textarea { min-height: 80px; resize: vertical; font-family: var(--font-body); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 500px) { .field-row { grid-template-columns: 1fr; } }
+
+  .form-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+  }
+
+  /* === SESSIONS (in detail modal) === */
+  .sessions-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .sessions-head h3 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    color: var(--amber);
+    letter-spacing: 2px;
+  }
+  .session {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 12px;
+    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: start;
+  }
+  .session-date {
+    font-family: var(--font-display);
+    font-size: 24px;
+    color: var(--amber);
+    line-height: 1;
+  }
+  .session-date small {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 9px;
+    color: var(--text-faint);
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+  .session-info {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .session-info strong { color: var(--text); margin-right: 8px; }
+  .session-info .session-notes {
+    margin-top: 4px;
+    color: var(--text);
+    font-size: 12px;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .detail-cover {
+    aspect-ratio: 3 / 4;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .detail-cover img { width: 100%; height: 100%; object-fit: cover; }
+  .detail-info .detail-title {
+    font-family: var(--font-display);
+    font-size: 36px;
+    color: var(--text);
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+  .detail-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .detail-notes {
+    font-size: 13px;
+    color: var(--text);
+    white-space: pre-wrap;
+    background: var(--bg);
+    padding: 10px 12px;
+    border-left: 2px solid var(--phosphor);
+  }
+
+  /* === SETUP SCREEN === */
+  .setup {
+    max-width: 600px;
+    margin: 60px auto;
+    padding: 40px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+  }
+  .setup h2 {
+    font-family: var(--font-display);
+    font-size: 40px;
+    color: var(--amber);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+  .setup p { color: var(--text-dim); margin-bottom: 20px; font-size: 13px; }
+  .setup code {
+    background: var(--bg);
+    padding: 2px 6px;
+    color: var(--phosphor);
+    font-size: 12px;
+  }
+  .setup pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 12px;
+    overflow-x: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin: 12px 0;
+    line-height: 1.6;
+  }
+  .setup pre .kw { color: var(--purple); }
+  .setup pre .str { color: var(--amber); }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--bg-elev);
+    border: 1px solid var(--phosphor);
+    color: var(--phosphor);
+    padding: 12px 18px;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    z-index: 2000;
+    box-shadow: 0 0 20px rgba(124,255,107,0.2);
+    animation: toastIn 0.2s ease;
+  }
+  .toast.error { border-color: var(--red); color: var(--red); box-shadow: 0 0 20px rgba(255,91,91,0.2); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } }
+
+  @media (max-width: 600px) {
+    .brand h1 { font-size: 44px; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .detail-cover { max-width: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="setupScreen" class="setup" style="display:none">
+  <h2>INITIAL SETUP</h2>
+  <p>To connect this tracker to your Supabase project, you need your project URL and anon key. Paste them below — they'll be saved in this browser.</p>
+
+  <div class="field">
+    <label>Supabase URL</label>
+    <input id="setupUrl" type="text" placeholder="https://xxxxx.supabase.co">
+  </div>
+  <div class="field">
+    <label>Anon / Public Key</label>
+    <input id="setupKey" type="text" placeholder="eyJhbGci...">
+  </div>
+
+  <p style="margin-top: 24px;"><strong style="color: var(--text);">First time?</strong> Run this SQL in your Supabase SQL editor to create the tables:</p>
+  <pre>
+<span class="kw">create table</span> games (
+  id uuid <span class="kw">primary key default</span> gen_random_uuid(),
+  title text <span class="kw">not null</span>,
+  cover_url text,
+  status text <span class="kw">not null default</span> <span class="str">'planned'</span>,
+  notes text,
+  created_at timestamptz <span class="kw">default</span> now()
+);
+
+<span class="kw">create table</span> sessions (
+  id uuid <span class="kw">primary key default</span> gen_random_uuid(),
+  game_id uuid <span class="kw">references</span> games(id) <span class="kw">on delete cascade</span>,
+  streamed_on date <span class="kw">not null</span>,
+  duration_minutes <span class="kw">int</span>,
+  peak_viewers <span class="kw">int</span>,
+  notes text,
+  created_at timestamptz <span class="kw">default</span> now()
+);
+
+<span class="kw">alter table</span> games <span class="kw">enable row level security</span>;
+<span class="kw">alter table</span> sessions <span class="kw">enable row level security</span>;
+
+<span class="kw">create policy</span> <span class="str">"public all"</span> <span class="kw">on</span> games <span class="kw">for all using</span> (<span class="kw">true</span>) <span class="kw">with check</span> (<span class="kw">true</span>);
+<span class="kw">create policy</span> <span class="str">"public all"</span> <span class="kw">on</span> sessions <span class="kw">for all using</span> (<span class="kw">true</span>) <span class="kw">with check</span> (<span class="kw">true</span>);</pre>
+  <p style="font-size: 11px; color: var(--text-faint);">Note: this uses an open policy since it's a personal log. If you want real auth later, we can add it.</p>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" onclick="saveSetup()">Connect</button>
+  </div>
+</div>
+
+<div id="app" class="app" style="display:none">
+  <header>
+    <div class="brand">
+      <h1><span>STREAM LOG</span><span class="blink"></span></h1>
+      <p>// Personal Game Tracker — Session Database</p>
+    </div>
+    <div class="header-actions">
+      <div id="connStatus" class="conn-status"><span class="conn-dot"></span><span id="connText">connecting</span></div>
+      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Config</button>
+      <button class="btn btn-primary" onclick="openGameModal()">+ New Game</button>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Total Games</div>
+      <div class="stat-value" id="statTotal">0</div>
+      <div class="stat-sub" id="statTotalSub">in database</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Hours Streamed</div>
+      <div class="stat-value amber" id="statHours">0</div>
+      <div class="stat-sub" id="statSessions">0 sessions</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Peak Viewers</div>
+      <div class="stat-value blue" id="statPeak">0</div>
+      <div class="stat-sub" id="statPeakGame">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Currently Playing</div>
+      <div class="stat-value purple" id="statActive">0</div>
+      <div class="stat-sub" id="statActiveSub">active games</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search"><input type="text" id="searchInput" placeholder="Search titles..." oninput="render()"></div>
+    <select class="filter" id="sortBy" onchange="render()">
+      <option value="recent">Recently Added</option>
+      <option value="streamed">Most Streamed</option>
+      <option value="title">Title A-Z</option>
+      <option value="last-stream">Last Streamed</option>
+    </select>
+  </div>
+
+  <div class="status-filter" id="statusFilter"></div>
+
+  <div class="games" id="gameGrid"></div>
+</div>
+
+<!-- === GAME MODAL (Add/Edit) === -->
+<div class="modal-backdrop" id="gameModal" onclick="if(event.target===this)closeGameModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="gameModalTitle">NEW GAME</h2>
+      <button class="close-x" onclick="closeGameModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Title *</label>
+        <input id="gameTitle" type="text" placeholder="Baldur's Gate 3">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Status</label>
+          <select id="gameStatus">
+            <option value="planned">Planned</option>
+            <option value="playing">Playing Now</option>
+            <option value="completed">Completed</option>
+            <option value="hold">On Hold</option>
+            <option value="dropped">Dropped</option>
+            <option value="variety">One-off / Variety</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Cover Image URL</label>
+          <input id="gameCover" type="text" placeholder="https://...">
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="gameNotes" placeholder="General thoughts, plan, memorable moments..."></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost btn-danger" id="deleteGameBtn" onclick="deleteGame()" style="display:none">Delete</button>
+        <button class="btn btn-ghost" onclick="closeGameModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveGame()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- === GAME DETAIL MODAL === -->
+<div class="modal-backdrop" id="detailModal" onclick="if(event.target===this)closeDetail()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>DETAILS</h2>
+      <button class="close-x" onclick="closeDetail()">×</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- === SESSION MODAL === -->
+<div class="modal-backdrop" id="sessionModal" onclick="if(event.target===this)closeSessionModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="sessionModalTitle">LOG SESSION</h2>
+      <button class="close-x" onclick="closeSessionModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Date Streamed *</label>
+        <input id="sessionDate" type="date">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Duration (minutes)</label>
+          <input id="sessionDuration" type="number" min="0" placeholder="180">
+        </div>
+        <div class="field">
+          <label>Peak Viewers</label>
+          <input id="sessionPeak" type="number" min="0" placeholder="0">
+        </div>
+      </div>
+      <div class="field">
+        <label>Session Notes</label>
+        <textarea id="sessionNotes" placeholder="Highlights, moments, observations..."></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost btn-danger" id="deleteSessionBtn" onclick="deleteSession()" style="display:none">Delete</button>
+        <button class="btn btn-ghost" onclick="closeSessionModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSession()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const STATUS_OPTS = [
+  { key: 'all',       label: 'All' },
+  { key: 'playing',   label: 'Playing' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'hold',      label: 'On Hold' },
+  { key: 'dropped',   label: 'Dropped' },
+  { key: 'variety',   label: 'Variety' },
+  { key: 'planned',   label: 'Planned' }
+];
+
+let sb = null;
+let games = [];
+let sessions = [];
+let editingGameId = null;
+let editingSessionId = null;
+let currentDetailGameId = null;
+let activeStatus = 'all';
+
+// ============================================================
+// SETUP
+// ============================================================
+function safeGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); return true; } catch(e) { return false; } }
+function safeRemove(k) { try { localStorage.removeItem(k); } catch(e) {} }
+
+function showSetup() {
+  document.getElementById('setupScreen').style.display = 'block';
+  document.getElementById('app').style.display = 'none';
+}
+function showApp() {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+}
+
+function init() {
+  // Always start by showing SOMETHING so the page isn't blank
+  const url = safeGet('sb_url');
+  const key = safeGet('sb_key');
+
+  if (!url || !key) {
+    showSetup();
+    return;
+  }
+
+  // We have saved credentials — try to connect
+  if (!window.supabase || !window.supabase.createClient) {
+    // Library didn't load (CDN blocked, offline, etc.)
+    toast('Supabase library failed to load — check internet connection', true);
+    showSetup();
+    return;
+  }
+
+  try {
+    sb = window.supabase.createClient(url, key);
+    showApp();
+    renderStatusFilter();
+    loadAll();
+  } catch (e) {
+    toast('Failed to connect: ' + e.message, true);
+    showSetup();
+  }
+}
+
+function saveSetup() {
+  const url = document.getElementById('setupUrl').value.trim();
+  const key = document.getElementById('setupKey').value.trim();
+  if (!url || !key) { toast('Both fields required', true); return; }
+  if (!safeSet('sb_url', url) || !safeSet('sb_key', key)) {
+    toast('Could not save to localStorage (is it disabled?)', true);
+    return;
+  }
+  init();
+}
+
+function openSettings() {
+  if (confirm('Reset connection? You\'ll need to re-enter your Supabase URL and key.')) {
+    safeRemove('sb_url');
+    safeRemove('sb_key');
+    location.reload();
+  }
+}
+
+// ============================================================
+// DATA
+// ============================================================
+async function loadAll() {
+  setConn('connecting', false);
+  try {
+    const [g, s] = await Promise.all([
+      sb.from('games').select('*').order('created_at', { ascending: false }),
+      sb.from('sessions').select('*').order('streamed_on', { ascending: false })
+    ]);
+    if (g.error) throw g.error;
+    if (s.error) throw s.error;
+    games = g.data || [];
+    sessions = s.data || [];
+    setConn('online', true);
+    render();
+  } catch (e) {
+    setConn('offline', false);
+    toast('Load failed: ' + e.message, true);
+  }
+}
+
+function setConn(text, ok) {
+  const el = document.getElementById('connStatus');
+  document.getElementById('connText').textContent = text;
+  el.classList.toggle('ok', ok);
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function render() {
+  renderStats();
+  renderStatusFilter();
+  renderGames();
+}
+
+function renderStats() {
+  document.getElementById('statTotal').textContent = games.length;
+  const totalMin = sessions.reduce((s, x) => s + (x.duration_minutes || 0), 0);
+  document.getElementById('statHours').textContent = (totalMin / 60).toFixed(1);
+  document.getElementById('statSessions').textContent = sessions.length + ' session' + (sessions.length === 1 ? '' : 's');
+
+  let peak = 0, peakGame = '—';
+  sessions.forEach(s => {
+    if ((s.peak_viewers || 0) > peak) {
+      peak = s.peak_viewers;
+      const g = games.find(gg => gg.id === s.game_id);
+      peakGame = g ? g.title : '—';
+    }
+  });
+  document.getElementById('statPeak').textContent = peak;
+  document.getElementById('statPeakGame').textContent = peakGame.length > 24 ? peakGame.slice(0,22)+'…' : peakGame;
+
+  const active = games.filter(g => g.status === 'playing').length;
+  document.getElementById('statActive').textContent = active;
+}
+
+function renderStatusFilter() {
+  const counts = {};
+  games.forEach(g => { counts[g.status] = (counts[g.status] || 0) + 1; });
+  const html = STATUS_OPTS.map(opt => {
+    const c = opt.key === 'all' ? games.length : (counts[opt.key] || 0);
+    return `<button class="pill ${opt.key === activeStatus ? 'active' : ''}" onclick="setStatus('${opt.key}')">${opt.label}<span class="count">${c}</span></button>`;
+  }).join('');
+  document.getElementById('statusFilter').innerHTML = html;
+}
+
+function setStatus(s) { activeStatus = s; render(); }
+
+function renderGames() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const sortBy = document.getElementById('sortBy').value;
+
+  let list = games.slice();
+  if (activeStatus !== 'all') list = list.filter(g => g.status === activeStatus);
+  if (q) list = list.filter(g => g.title.toLowerCase().includes(q));
+
+  // stats per game
+  const bg = {};
+  sessions.forEach(s => {
+    if (!bg[s.game_id]) bg[s.game_id] = { count: 0, last: null, min: 0 };
+    bg[s.game_id].count++;
+    bg[s.game_id].min += (s.duration_minutes || 0);
+    if (!bg[s.game_id].last || s.streamed_on > bg[s.game_id].last) bg[s.game_id].last = s.streamed_on;
+  });
+
+  if (sortBy === 'streamed') list.sort((a,b) => (bg[b.id]?.count||0) - (bg[a.id]?.count||0));
+  else if (sortBy === 'title') list.sort((a,b) => a.title.localeCompare(b.title));
+  else if (sortBy === 'last-stream') list.sort((a,b) => (bg[b.id]?.last||'').localeCompare(bg[a.id]?.last||''));
+  // 'recent' is the DB order
+
+  const grid = document.getElementById('gameGrid');
+  if (list.length === 0) {
+    grid.innerHTML = `<div class="empty"><h3>NO GAMES FOUND</h3><p>${games.length === 0 ? 'Click "New Game" to start tracking.' : 'Try a different filter or search.'}</p></div>`;
+    return;
+  }
+
+  grid.innerHTML = list.map(g => {
+    const st = bg[g.id] || { count: 0, last: null, min: 0 };
+    const hrs = (st.min/60).toFixed(1);
+    return `
+      <div class="card" onclick="openDetail('${g.id}')">
+        <div class="cover">
+          ${g.cover_url ? `<img src="${escapeAttr(g.cover_url)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
+          <div class="no-cover" style="${g.cover_url ? 'display:none' : ''}">?</div>
+          <div class="status-badge status-${g.status}">${statusLabel(g.status)}</div>
+        </div>
+        <div class="card-body">
+          <div class="card-title">${escapeHtml(g.title)}</div>
+          <div class="card-meta">
+            <span>${st.count} stream${st.count===1?'':'s'}</span>
+            <span>${hrs}h</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================================
+// GAME MODAL
+// ============================================================
+function openGameModal(id) {
+  editingGameId = id || null;
+  const modal = document.getElementById('gameModal');
+  const title = document.getElementById('gameModalTitle');
+  const delBtn = document.getElementById('deleteGameBtn');
+
+  if (id) {
+    const g = games.find(x => x.id === id);
+    if (!g) return;
+    title.textContent = 'EDIT GAME';
+    document.getElementById('gameTitle').value = g.title || '';
+    document.getElementById('gameStatus').value = g.status || 'planned';
+    document.getElementById('gameCover').value = g.cover_url || '';
+    document.getElementById('gameNotes').value = g.notes || '';
+    delBtn.style.display = 'inline-flex';
+  } else {
+    title.textContent = 'NEW GAME';
+    document.getElementById('gameTitle').value = '';
+    document.getElementById('gameStatus').value = 'planned';
+    document.getElementById('gameCover').value = '';
+    document.getElementById('gameNotes').value = '';
+    delBtn.style.display = 'none';
+  }
+  modal.classList.add('open');
+  setTimeout(() => document.getElementById('gameTitle').focus(), 50);
+}
+
+function closeGameModal() {
+  document.getElementById('gameModal').classList.remove('open');
+  editingGameId = null;
+}
+
+async function saveGame() {
+  const title = document.getElementById('gameTitle').value.trim();
+  if (!title) { toast('Title required', true); return; }
+  const payload = {
+    title,
+    status: document.getElementById('gameStatus').value,
+    cover_url: document.getElementById('gameCover').value.trim() || null,
+    notes: document.getElementById('gameNotes').value.trim() || null
+  };
+  try {
+    if (editingGameId) {
+      const { error } = await sb.from('games').update(payload).eq('id', editingGameId);
+      if (error) throw error;
+      toast('Game updated');
+    } else {
+      const { error } = await sb.from('games').insert(payload);
+      if (error) throw error;
+      toast('Game added');
+    }
+    closeGameModal();
+    await loadAll();
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+async function deleteGame() {
+  if (!editingGameId) return;
+  if (!confirm('Delete this game and all its sessions? This cannot be undone.')) return;
+  try {
+    const { error } = await sb.from('games').delete().eq('id', editingGameId);
+    if (error) throw error;
+    toast('Deleted');
+    closeGameModal();
+    closeDetail();
+    await loadAll();
+  } catch (e) { toast('Delete failed: ' + e.message, true); }
+}
+
+// ============================================================
+// DETAIL MODAL
+// ============================================================
+function openDetail(id) {
+  const g = games.find(x => x.id === id);
+  if (!g) return;
+  currentDetailGameId = id;
+  const mySessions = sessions.filter(s => s.game_id === id)
+    .sort((a,b) => b.streamed_on.localeCompare(a.streamed_on));
+
+  const totalMin = mySessions.reduce((s,x) => s + (x.duration_minutes||0), 0);
+  const peak = mySessions.reduce((m,x) => Math.max(m, x.peak_viewers||0), 0);
+
+  document.getElementById('detailBody').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-cover">
+        ${g.cover_url ? `<img src="${escapeAttr(g.cover_url)}" onerror="this.parentElement.innerHTML='<div style=\\'display:flex;height:100%;align-items:center;justify-content:center;font-family:var(--font-display);font-size:48px;color:var(--text-faint)\\'>?</div>'">` : `<div style="display:flex;height:100%;align-items:center;justify-content:center;font-family:var(--font-display);font-size:48px;color:var(--text-faint)">?</div>`}
+      </div>
+      <div class="detail-info">
+        <div class="detail-title">${escapeHtml(g.title)}</div>
+        <div class="status-badge status-${g.status}" style="display:inline-block;position:static;margin-bottom:10px">${statusLabel(g.status)}</div>
+        <div class="detail-meta">
+          <span>▶ ${mySessions.length} session${mySessions.length===1?'':'s'}</span>
+          <span>⏱ ${(totalMin/60).toFixed(1)}h</span>
+          <span>👁 peak ${peak}</span>
+        </div>
+        ${g.notes ? `<div class="detail-notes">${escapeHtml(g.notes)}</div>` : ''}
+        <div style="margin-top:12px;display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="openGameModal('${g.id}')">Edit Game</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sessions-head">
+      <h3>STREAM SESSIONS</h3>
+      <button class="btn btn-primary btn-sm" onclick="openSessionModal('${g.id}')">+ Log Session</button>
+    </div>
+    ${mySessions.length === 0 ? '<div class="empty" style="padding:30px"><p>No sessions logged yet.</p></div>' : mySessions.map(s => {
+      const d = new Date(s.streamed_on + 'T00:00:00');
+      const day = d.getDate();
+      const mon = d.toLocaleString('en', { month: 'short' }).toUpperCase();
+      const yr = d.getFullYear();
+      return `
+        <div class="session">
+          <div class="session-date">${day}<small>${mon} ${yr}</small></div>
+          <div class="session-info">
+            ${s.duration_minutes ? `<strong>${(s.duration_minutes/60).toFixed(1)}h</strong>` : ''}
+            ${s.peak_viewers ? `<strong>👁 ${s.peak_viewers}</strong>` : ''}
+            ${s.notes ? `<div class="session-notes">${escapeHtml(s.notes)}</div>` : ''}
+          </div>
+          <button class="btn btn-sm btn-ghost" onclick="openSessionModal('${g.id}','${s.id}')">✎</button>
+        </div>
+      `;
+    }).join('')}
+  `;
+  document.getElementById('detailModal').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detailModal').classList.remove('open');
+  currentDetailGameId = null;
+}
+
+// ============================================================
+// SESSION MODAL
+// ============================================================
+function openSessionModal(gameId, sessionId) {
+  editingSessionId = sessionId || null;
+  currentDetailGameId = gameId;
+  const title = document.getElementById('sessionModalTitle');
+  const delBtn = document.getElementById('deleteSessionBtn');
+
+  if (sessionId) {
+    const s = sessions.find(x => x.id === sessionId);
+    if (!s) return;
+    title.textContent = 'EDIT SESSION';
+    document.getElementById('sessionDate').value = s.streamed_on;
+    document.getElementById('sessionDuration').value = s.duration_minutes || '';
+    document.getElementById('sessionPeak').value = s.peak_viewers || '';
+    document.getElementById('sessionNotes').value = s.notes || '';
+    delBtn.style.display = 'inline-flex';
+  } else {
+    title.textContent = 'LOG SESSION';
+    document.getElementById('sessionDate').value = new Date().toISOString().slice(0,10);
+    document.getElementById('sessionDuration').value = '';
+    document.getElementById('sessionPeak').value = '';
+    document.getElementById('sessionNotes').value = '';
+    delBtn.style.display = 'none';
+  }
+  document.getElementById('sessionModal').classList.add('open');
+}
+
+function closeSessionModal() {
+  document.getElementById('sessionModal').classList.remove('open');
+  editingSessionId = null;
+}
+
+async function saveSession() {
+  const date = document.getElementById('sessionDate').value;
+  if (!date) { toast('Date required', true); return; }
+  const dur = document.getElementById('sessionDuration').value;
+  const peak = document.getElementById('sessionPeak').value;
+  const payload = {
+    game_id: currentDetailGameId,
+    streamed_on: date,
+    duration_minutes: dur ? parseInt(dur) : null,
+    peak_viewers: peak ? parseInt(peak) : null,
+    notes: document.getElementById('sessionNotes').value.trim() || null
+  };
+  try {
+    if (editingSessionId) {
+      const { error } = await sb.from('sessions').update(payload).eq('id', editingSessionId);
+      if (error) throw error;
+      toast('Session updated');
+    } else {
+      const { error } = await sb.from('sessions').insert(payload);
+      if (error) throw error;
+      toast('Session logged');
+    }
+    closeSessionModal();
+    await loadAll();
+    if (currentDetailGameId) openDetail(currentDetailGameId);
+  } catch (e) { toast('Save failed: ' + e.message, true); }
+}
+
+async function deleteSession() {
+  if (!editingSessionId) return;
+  if (!confirm('Delete this session?')) return;
+  try {
+    const { error } = await sb.from('sessions').delete().eq('id', editingSessionId);
+    if (error) throw error;
+    toast('Session deleted');
+    closeSessionModal();
+    await loadAll();
+    if (currentDetailGameId) openDetail(currentDetailGameId);
+  } catch (e) { toast('Delete failed: ' + e.message, true); }
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function statusLabel(s) {
+  return ({
+    playing: 'Playing',
+    completed: 'Completed',
+    dropped: 'Dropped',
+    hold: 'On Hold',
+    variety: 'Variety',
+    planned: 'Planned'
+  })[s] || s;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+function toast(msg, isErr) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.className = 'toast' + (isErr ? ' error' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// ESC to close modals
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+// Wait for DOM to be ready before running init
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
