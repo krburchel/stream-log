@@ -622,6 +622,84 @@
   .setup pre .kw { color: var(--purple); }
   .setup pre .str { color: var(--amber); }
 
+  .rawg-search-field { position: relative; }
+  .rawg-hint {
+    font-size: 9px;
+    color: var(--text-faint);
+    margin-left: 6px;
+    text-transform: none;
+    letter-spacing: 0.5px;
+  }
+  .rawg-hint.missing { color: var(--amber); }
+  .rawg-input-wrap { position: relative; }
+  .rawg-spinner {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--phosphor);
+    font-family: var(--font-display);
+    font-size: 16px;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
+  .rawg-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--phosphor);
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 10;
+    display: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+  .rawg-results.open { display: block; }
+  .rawg-result {
+    display: flex;
+    gap: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .rawg-result:last-child { border-bottom: none; }
+  .rawg-result:hover { background: var(--bg); }
+  .rawg-result img {
+    width: 44px;
+    height: 58px;
+    object-fit: cover;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  .rawg-result-info { flex: 1; min-width: 0; }
+  .rawg-result-title {
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rawg-result-meta {
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+  .rawg-empty, .rawg-setup-prompt {
+    padding: 16px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .rawg-setup-prompt { color: var(--amber); }
+  .rawg-setup-prompt a { color: var(--phosphor); text-decoration: underline; }
+  .rawg-setup-prompt button { margin-top: 8px; }
+
   .toast {
     position: fixed;
     bottom: 24px;
@@ -754,6 +832,14 @@
       <button class="close-x" onclick="closeGameModal()">×</button>
     </div>
     <div class="modal-body">
+      <div class="field rawg-search-field">
+        <label>Search Game Database <span class="rawg-hint" id="rawgHint">(RAWG)</span></label>
+        <div class="rawg-input-wrap">
+          <input id="rawgSearch" type="text" placeholder="Start typing to search..." autocomplete="off">
+          <span class="rawg-spinner" id="rawgSpinner" style="display:none">⣾</span>
+        </div>
+        <div class="rawg-results" id="rawgResults"></div>
+      </div>
       <div class="field">
         <label>Title *</label>
         <input id="gameTitle" type="text" placeholder="Baldur's Gate 3">
@@ -852,6 +938,8 @@ let sb = null;
 let games = [];
 let sessions = [];
 let editingGameId = null;
+let rawgSearchTimer = null;
+let rawgLastQuery = '';
 let editingSessionId = null;
 let currentDetailGameId = null;
 let activeStatus = 'all';
@@ -1049,6 +1137,12 @@ function openGameModal(id) {
   const title = document.getElementById('gameModalTitle');
   const delBtn = document.getElementById('deleteGameBtn');
 
+  // Reset RAWG search
+  document.getElementById('rawgSearch').value = '';
+  document.getElementById('rawgResults').classList.remove('open');
+  document.getElementById('rawgResults').innerHTML = '';
+  updateRawgHint();
+
   if (id) {
     const g = games.find(x => x.id === id);
     if (!g) return;
@@ -1067,12 +1161,126 @@ function openGameModal(id) {
     delBtn.style.display = 'none';
   }
   modal.classList.add('open');
-  setTimeout(() => document.getElementById('gameTitle').focus(), 50);
+  setTimeout(() => {
+    const input = id ? document.getElementById('gameTitle') : document.getElementById('rawgSearch');
+    input.focus();
+  }, 50);
 }
 
 function closeGameModal() {
   document.getElementById('gameModal').classList.remove('open');
+  document.getElementById('rawgResults').classList.remove('open');
   editingGameId = null;
+}
+
+// ============================================================
+// RAWG GAME DATABASE SEARCH
+// ============================================================
+function getRawgKey() { return safeGet('rawg_key') || ''; }
+function setRawgKey(k) { safeSet('rawg_key', k); }
+
+function updateRawgHint() {
+  const hint = document.getElementById('rawgHint');
+  if (!hint) return;
+  if (getRawgKey()) {
+    hint.textContent = '(RAWG · connected)';
+    hint.classList.remove('missing');
+  } else {
+    hint.innerHTML = '(RAWG · <a href="#" onclick="promptRawgKey();return false" style="color:var(--amber);text-decoration:underline">add free API key</a>)';
+    hint.classList.add('missing');
+  }
+}
+
+function promptRawgKey() {
+  const current = getRawgKey();
+  const msg = 'Enter your RAWG API key (get one free at rawg.io/apidocs):';
+  const k = prompt(msg, current);
+  if (k !== null) {
+    setRawgKey(k.trim());
+    updateRawgHint();
+    if (k.trim()) toast('RAWG key saved');
+  }
+}
+
+function onRawgInput(e) {
+  const q = e.target.value.trim();
+  clearTimeout(rawgSearchTimer);
+  const results = document.getElementById('rawgResults');
+
+  if (!q) {
+    results.classList.remove('open');
+    results.innerHTML = '';
+    return;
+  }
+
+  if (!getRawgKey()) {
+    results.innerHTML = `<div class="rawg-setup-prompt">
+      No RAWG API key saved.<br>
+      <button class="btn btn-sm" onclick="promptRawgKey()">Add Free API Key</button>
+    </div>`;
+    results.classList.add('open');
+    return;
+  }
+
+  // Debounce
+  rawgSearchTimer = setTimeout(() => doRawgSearch(q), 350);
+}
+
+async function doRawgSearch(q) {
+  if (q === rawgLastQuery) return;
+  rawgLastQuery = q;
+  const spinner = document.getElementById('rawgSpinner');
+  const results = document.getElementById('rawgResults');
+  spinner.style.display = 'block';
+
+  try {
+    const url = `https://api.rawg.io/api/games?key=${encodeURIComponent(getRawgKey())}&search=${encodeURIComponent(q)}&page_size=8`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status + (res.status === 401 ? ' — invalid API key' : ''));
+    const data = await res.json();
+    renderRawgResults(data.results || []);
+  } catch (e) {
+    results.innerHTML = `<div class="rawg-empty" style="color:var(--red)">Search failed: ${escapeHtml(e.message)}</div>`;
+    results.classList.add('open');
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+function renderRawgResults(list) {
+  const results = document.getElementById('rawgResults');
+  if (!list.length) {
+    results.innerHTML = '<div class="rawg-empty">No matches — enter title manually below</div>';
+    results.classList.add('open');
+    return;
+  }
+  results.innerHTML = list.map(g => {
+    const year = g.released ? g.released.slice(0,4) : '—';
+    const platforms = (g.parent_platforms || []).map(p => p.platform.name).slice(0, 3).join(' · ');
+    const img = g.background_image || '';
+    const payload = encodeURIComponent(JSON.stringify({
+      title: g.name,
+      cover: img
+    }));
+    return `<div class="rawg-result" onclick="pickRawgGame('${payload}')">
+      ${img ? `<img src="${escapeAttr(img)}" onerror="this.style.visibility='hidden'">` : '<img>'}
+      <div class="rawg-result-info">
+        <div class="rawg-result-title">${escapeHtml(g.name)}</div>
+        <div class="rawg-result-meta">${year}${platforms ? ' · ' + escapeHtml(platforms) : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  results.classList.add('open');
+}
+
+function pickRawgGame(payload) {
+  const g = JSON.parse(decodeURIComponent(payload));
+  document.getElementById('gameTitle').value = g.title || '';
+  document.getElementById('gameCover').value = g.cover || '';
+  document.getElementById('rawgSearch').value = '';
+  document.getElementById('rawgResults').classList.remove('open');
+  rawgLastQuery = '';
+  toast('Game imported');
 }
 
 async function saveGame() {
@@ -1288,10 +1496,22 @@ document.addEventListener('keydown', e => {
 });
 
 // Wait for DOM to be ready before running init
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
+function bootstrap() {
+  const rawgInput = document.getElementById('rawgSearch');
+  if (rawgInput) rawgInput.addEventListener('input', onRawgInput);
+  // Close RAWG results if clicking outside
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.rawg-search-field')) {
+      document.getElementById('rawgResults')?.classList.remove('open');
+    }
+  });
   init();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  bootstrap();
 }
 </script>
 </body>
