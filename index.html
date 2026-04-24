@@ -700,6 +700,61 @@
   .rawg-setup-prompt a { color: var(--phosphor); text-decoration: underline; }
   .rawg-setup-prompt button { margin-top: 8px; }
 
+  /* Twitch VOD list */
+  #twitchBtn.connected { color: #c77cff; border-color: #6d3a9a; }
+  .vod-item {
+    display: grid;
+    grid-template-columns: 80px 1fr 220px;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    margin-bottom: 6px;
+    align-items: center;
+  }
+  .vod-item.imported { opacity: 0.55; }
+  .vod-thumb {
+    width: 80px;
+    height: 45px;
+    object-fit: cover;
+    background: var(--bg);
+  }
+  .vod-info { min-width: 0; }
+  .vod-title {
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+  .vod-meta {
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: flex;
+    gap: 10px;
+  }
+  .vod-pick select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+  .vod-pick .imported-tag {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--phosphor);
+    text-align: center;
+    padding: 6px;
+    border: 1px dashed var(--phosphor-dim);
+  }
+
   /* Genre tag chips */
   .genre-tags {
     display: flex;
@@ -856,6 +911,7 @@
     </div>
     <div class="header-actions">
       <div id="connStatus" class="conn-status"><span class="conn-dot"></span><span id="connText">connecting</span></div>
+      <button class="btn btn-ghost btn-sm" id="twitchBtn" onclick="onTwitchButtonClick()">🟣 Twitch</button>
       <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Config</button>
       <button class="btn btn-primary" onclick="openGameModal()">+ New Game</button>
     </div>
@@ -915,6 +971,67 @@
         <button class="btn" onclick="exportCSV('sessions')">⬇ Sessions (CSV)</button>
         <button class="btn" onclick="exportCSV('combined')">⬇ Sessions + Game Info (CSV)</button>
         <button class="btn" onclick="exportJSON()">⬇ Full Backup (JSON)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Twitch setup modal -->
+<div class="modal-backdrop" id="twitchSetupModal" onclick="if(event.target===this)closeTwitchSetup()">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head">
+      <h2 style="color:#c77cff">🟣 CONNECT TWITCH</h2>
+      <button class="close-x" onclick="closeTwitchSetup()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:16px">One-time setup. Create a Twitch app, paste your Client ID, authorize. Then you can import past VODs as sessions with two clicks.</p>
+
+      <div style="background:var(--bg);border:1px solid var(--border);padding:12px;margin-bottom:16px;font-size:12px;line-height:1.7">
+        <div style="color:var(--phosphor);letter-spacing:1.5px;text-transform:uppercase;font-size:10px;margin-bottom:6px">Step 1 — Create Twitch App</div>
+        <div style="color:var(--text-dim)">
+          Go to <a href="https://dev.twitch.tv/console/apps/create" target="_blank" style="color:var(--phosphor)">dev.twitch.tv/console/apps/create</a><br>
+          • Name: anything (e.g. "Stream Log")<br>
+          • OAuth Redirect URL: <code id="redirectUrlDisplay" style="background:var(--bg-elev-2);padding:2px 6px;color:var(--amber);font-size:11px;user-select:all"></code> <button class="btn btn-sm" style="padding:2px 8px;font-size:9px;margin-left:4px" onclick="copyRedirect()">copy</button><br>
+          • Category: Application Integration<br>
+          • Client Type: <strong style="color:var(--phosphor)">Public</strong> (important — no secret needed)<br>
+          After creating, click "Manage" on the app to see your <strong>Client ID</strong>.
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Twitch Client ID</label>
+        <input id="twitchClientId" type="text" placeholder="abc123xyz...">
+      </div>
+      <div class="field">
+        <label>Your Twitch Username</label>
+        <input id="twitchUsername" type="text" placeholder="kevinburchell">
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-ghost" id="twitchDisconnectBtn" onclick="twitchDisconnect()" style="display:none">Disconnect</button>
+        <button class="btn btn-ghost" onclick="closeTwitchSetup()">Cancel</button>
+        <button class="btn btn-primary" onclick="twitchAuthorize()" style="background:#c77cff;border-color:#c77cff">Authorize with Twitch →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Twitch import modal -->
+<div class="modal-backdrop" id="twitchImportModal" onclick="if(event.target===this)closeTwitchImport()">
+  <div class="modal" style="max-width:780px">
+    <div class="modal-head">
+      <h2 style="color:#c77cff">🟣 IMPORT FROM TWITCH</h2>
+      <button class="close-x" onclick="closeTwitchImport()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">
+        Your recent VODs (broadcasts). Pick a game from your library for each one you want to import, then click Import.
+        Already-imported VODs are marked and skipped automatically.
+      </p>
+      <div id="twitchVodList" style="max-height:440px;overflow-y:auto;border:1px solid var(--border);padding:8px;background:var(--bg)"></div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="closeTwitchImport()">Cancel</button>
+        <button class="btn btn-primary" id="twitchImportBtn" onclick="twitchImportSelected()" style="background:#c77cff;border-color:#c77cff">Import Selected</button>
       </div>
     </div>
   </div>
@@ -1819,6 +1936,270 @@ function exportJSON() {
   closeExportMenu();
 }
 
+// ============================================================
+// TWITCH INTEGRATION
+// ============================================================
+const TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/authorize';
+const TWITCH_API = 'https://api.twitch.tv/helix';
+
+function twitchGet(k) { return safeGet('twitch_' + k) || ''; }
+function twitchSet(k, v) { return safeSet('twitch_' + k, v); }
+function twitchRemove(k) { safeRemove('twitch_' + k); }
+
+function twitchRedirectUri() {
+  // Use location.origin + pathname (strip query/hash for a clean redirect target)
+  return location.origin + location.pathname;
+}
+
+function twitchConnected() {
+  return !!(twitchGet('client_id') && twitchGet('token') && twitchGet('user_id'));
+}
+
+function refreshTwitchButton() {
+  const btn = document.getElementById('twitchBtn');
+  if (!btn) return;
+  if (twitchConnected()) {
+    btn.classList.add('connected');
+    btn.textContent = '🟣 Import VODs';
+  } else {
+    btn.classList.remove('connected');
+    btn.textContent = '🟣 Twitch';
+  }
+}
+
+function onTwitchButtonClick() {
+  if (twitchConnected()) openTwitchImport();
+  else openTwitchSetup();
+}
+
+function openTwitchSetup() {
+  document.getElementById('redirectUrlDisplay').textContent = twitchRedirectUri();
+  document.getElementById('twitchClientId').value = twitchGet('client_id');
+  document.getElementById('twitchUsername').value = twitchGet('username');
+  document.getElementById('twitchDisconnectBtn').style.display = twitchConnected() ? 'inline-flex' : 'none';
+  document.getElementById('twitchSetupModal').classList.add('open');
+}
+function closeTwitchSetup() { document.getElementById('twitchSetupModal').classList.remove('open'); }
+
+function copyRedirect() {
+  const url = twitchRedirectUri();
+  navigator.clipboard?.writeText(url).then(() => toast('Redirect URL copied'), () => toast('Copy failed — select manually', true));
+}
+
+function twitchAuthorize() {
+  const clientId = document.getElementById('twitchClientId').value.trim();
+  const username = document.getElementById('twitchUsername').value.trim().toLowerCase();
+  if (!clientId) { toast('Client ID required', true); return; }
+  if (!username) { toast('Username required', true); return; }
+  twitchSet('client_id', clientId);
+  twitchSet('username', username);
+  twitchSet('pending_auth', '1');
+  // Implicit grant flow — no scopes needed to read public VOD list
+  const state = Math.random().toString(36).slice(2);
+  twitchSet('oauth_state', state);
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: twitchRedirectUri(),
+    response_type: 'token',
+    scope: '',
+    state: state,
+    force_verify: 'false'
+  });
+  location.href = `${TWITCH_AUTH_URL}?${params.toString()}`;
+}
+
+function twitchDisconnect() {
+  if (!confirm('Disconnect from Twitch? Your imported sessions stay, but you\'ll need to re-authorize to import more.')) return;
+  ['client_id','username','token','user_id','oauth_state','pending_auth'].forEach(twitchRemove);
+  closeTwitchSetup();
+  refreshTwitchButton();
+  toast('Twitch disconnected');
+}
+
+async function handleTwitchRedirect() {
+  // Check URL hash for OAuth response
+  if (!location.hash || !location.hash.includes('access_token=')) return false;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const token = params.get('access_token');
+  const state = params.get('state');
+  const expectedState = twitchGet('oauth_state');
+
+  // Clear hash immediately so it doesn't stick around
+  history.replaceState(null, '', location.pathname + location.search);
+
+  if (!token) return false;
+  if (expectedState && state !== expectedState) {
+    toast('Twitch OAuth state mismatch — try again', true);
+    return false;
+  }
+  twitchSet('token', token);
+  twitchRemove('oauth_state');
+  twitchRemove('pending_auth');
+
+  // Resolve user_id from username
+  try {
+    const user = await twitchApi('/users?login=' + encodeURIComponent(twitchGet('username')));
+    if (user.data && user.data.length) {
+      twitchSet('user_id', user.data[0].id);
+      toast('Twitch connected');
+      refreshTwitchButton();
+      return true;
+    } else {
+      toast('Twitch username not found', true);
+      twitchRemove('token');
+    }
+  } catch (e) {
+    toast('Twitch connect failed: ' + e.message, true);
+    twitchRemove('token');
+  }
+  return false;
+}
+
+async function twitchApi(path) {
+  const res = await fetch(TWITCH_API + path, {
+    headers: {
+      'Authorization': 'Bearer ' + twitchGet('token'),
+      'Client-Id': twitchGet('client_id')
+    }
+  });
+  if (res.status === 401) {
+    // Token expired
+    twitchRemove('token');
+    twitchRemove('user_id');
+    refreshTwitchButton();
+    throw new Error('Twitch token expired — reconnect');
+  }
+  if (!res.ok) throw new Error('Twitch API ' + res.status);
+  return await res.json();
+}
+
+// Parse "6h26m14s" → minutes
+function twitchDurationToMin(str) {
+  if (!str) return 0;
+  let mins = 0;
+  const h = str.match(/(\d+)h/); if (h) mins += parseInt(h[1]) * 60;
+  const m = str.match(/(\d+)m/); if (m) mins += parseInt(m[1]);
+  const s = str.match(/(\d+)s/); if (s) mins += Math.round(parseInt(s[1]) / 60);
+  return mins;
+}
+
+function twitchThumbUrl(url, w, h) {
+  // Twitch thumbnail URLs have {width}x{height} placeholders (literally with percent-encoded braces)
+  if (!url) return '';
+  return url.replace(/%\{width\}/g, w).replace(/%\{height\}/g, h).replace(/\{width\}/g, w).replace(/\{height\}/g, h);
+}
+
+let pendingVods = [];
+
+async function openTwitchImport() {
+  document.getElementById('twitchImportModal').classList.add('open');
+  document.getElementById('twitchVodList').innerHTML = '<div class="rawg-empty" style="padding:30px">Loading VODs…</div>';
+  try {
+    const resp = await twitchApi('/videos?user_id=' + encodeURIComponent(twitchGet('user_id')) + '&type=archive&first=20');
+    pendingVods = resp.data || [];
+    renderVodList();
+  } catch (e) {
+    document.getElementById('twitchVodList').innerHTML = `<div class="rawg-empty" style="color:var(--red);padding:30px">${escapeHtml(e.message)}<br><br><button class="btn btn-sm" onclick="closeTwitchImport();openTwitchSetup()">Reconnect</button></div>`;
+  }
+}
+
+function closeTwitchImport() {
+  document.getElementById('twitchImportModal').classList.remove('open');
+  pendingVods = [];
+}
+
+function renderVodList() {
+  const importedVodIds = new Set(sessions.filter(s => s.twitch_vod_id).map(s => s.twitch_vod_id));
+  const gameOptions = games
+    .slice()
+    .sort((a,b) => a.title.localeCompare(b.title))
+    .map(g => `<option value="${g.id}">${escapeHtml(g.title)}</option>`).join('');
+
+  if (!pendingVods.length) {
+    document.getElementById('twitchVodList').innerHTML = '<div class="rawg-empty" style="padding:30px">No VODs found on your channel.</div>';
+    return;
+  }
+
+  document.getElementById('twitchVodList').innerHTML = pendingVods.map(v => {
+    const alreadyImported = importedVodIds.has(v.id);
+    const date = v.created_at ? v.created_at.slice(0,10) : '';
+    const durMin = twitchDurationToMin(v.duration);
+    const hrs = (durMin/60).toFixed(1);
+    const thumb = twitchThumbUrl(v.thumbnail_url, 160, 90);
+    return `
+      <div class="vod-item ${alreadyImported ? 'imported' : ''}" data-vod-id="${escapeAttr(v.id)}">
+        ${thumb ? `<img class="vod-thumb" src="${escapeAttr(thumb)}" onerror="this.style.visibility='hidden'">` : '<div class="vod-thumb"></div>'}
+        <div class="vod-info">
+          <div class="vod-title" title="${escapeAttr(v.title || '')}">${escapeHtml(v.title || '(untitled)')}</div>
+          <div class="vod-meta">
+            <span>${date}</span>
+            <span>${hrs}h</span>
+            <span><a href="${escapeAttr(v.url || '#')}" target="_blank" style="color:var(--text-dim);text-decoration:underline">VOD ↗</a></span>
+          </div>
+        </div>
+        <div class="vod-pick">
+          ${alreadyImported
+            ? '<div class="imported-tag">✓ Already imported</div>'
+            : `<select data-vod-pick="${escapeAttr(v.id)}">
+                 <option value="">— skip —</option>
+                 ${gameOptions}
+               </select>`}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function twitchImportSelected() {
+  const selects = document.querySelectorAll('[data-vod-pick]');
+  const jobs = [];
+  selects.forEach(sel => {
+    if (sel.value) {
+      const vodId = sel.getAttribute('data-vod-pick');
+      const vod = pendingVods.find(v => v.id === vodId);
+      if (vod) jobs.push({ vod, gameId: sel.value });
+    }
+  });
+  if (!jobs.length) { toast('Nothing selected', true); return; }
+
+  const btn = document.getElementById('twitchImportBtn');
+  btn.disabled = true;
+  btn.textContent = 'Importing...';
+
+  let ok = 0, fail = 0;
+  for (const job of jobs) {
+    const v = job.vod;
+    const payload = {
+      game_id: job.gameId,
+      streamed_on: v.created_at.slice(0,10),
+      duration_minutes: twitchDurationToMin(v.duration) || null,
+      peak_viewers: null,
+      notes: v.title || null,
+      twitch_vod_id: v.id
+    };
+    try {
+      const { error } = await sb.from('sessions').insert(payload);
+      if (error) throw error;
+      // Auto-fill started_on on the game if empty and no prior sessions
+      const g = games.find(x => x.id === job.gameId);
+      const existing = sessions.filter(s => s.game_id === job.gameId);
+      if (g && !g.started_on && existing.length === 0) {
+        await sb.from('games').update({ started_on: payload.streamed_on }).eq('id', job.gameId);
+      }
+      ok++;
+    } catch (e) {
+      console.error('Import failed for VOD', v.id, e);
+      fail++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Import Selected';
+  toast(`Imported ${ok}${fail ? ` (${fail} failed)` : ''}`, fail > 0);
+  closeTwitchImport();
+  await loadAll();
+}
+
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1857,6 +2238,9 @@ function bootstrap() {
       document.getElementById('rawgResults')?.classList.remove('open');
     }
   });
+  // Handle Twitch OAuth redirect before normal init (non-blocking)
+  handleTwitchRedirect();
+  refreshTwitchButton();
   init();
 }
 
