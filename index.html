@@ -700,6 +700,95 @@
   .rawg-setup-prompt a { color: var(--phosphor); text-decoration: underline; }
   .rawg-setup-prompt button { margin-top: 8px; }
 
+  /* Cover image uploader */
+  .cover-uploader {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 12px;
+    align-items: stretch;
+  }
+  .cover-preview {
+    aspect-ratio: 3 / 4;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cover-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .cover-placeholder {
+    font-family: var(--font-display);
+    font-size: 14px;
+    color: var(--text-faint);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .cover-clear-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--bg);
+    border: 1px solid var(--red);
+    color: var(--red);
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+  }
+  .cover-clear-btn:hover { background: var(--red); color: var(--bg); }
+
+  .cover-drop {
+    background: var(--bg);
+    border: 1px dashed var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 16px 12px;
+    transition: all 0.15s;
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .cover-drop.dragover {
+    border-color: var(--phosphor);
+    background: rgba(124,255,107,0.05);
+    color: var(--phosphor);
+    box-shadow: inset 0 0 20px rgba(124,255,107,0.1);
+  }
+  .cover-pick-btn {
+    background: none;
+    border: none;
+    color: var(--phosphor);
+    text-decoration: underline;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 12px;
+    padding: 0;
+  }
+  .cover-pick-btn:hover { color: #9dff8c; }
+  .cover-uploading {
+    text-align: center;
+    color: var(--phosphor);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .cover-spinner {
+    font-family: var(--font-display);
+    font-size: 24px;
+    animation: spin 0.6s linear infinite;
+    margin-bottom: 6px;
+  }
+
   /* Twitch VOD list */
   #twitchBtn.connected { color: #c77cff; border-color: #6d3a9a; }
   .vod-item {
@@ -854,6 +943,24 @@
 </head>
 <body>
 
+<div id="loginScreen" class="setup" style="display:none">
+  <h2>STREAM LOG</h2>
+  <p>Sign in to access your stream tracker. We'll email you a magic link — click it and you're in. No password to remember.</p>
+
+  <div class="field">
+    <label>Email</label>
+    <input id="loginEmail" type="email" placeholder="you@example.com" autocomplete="email">
+  </div>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" id="loginBtn" onclick="sendMagicLink()">Send Magic Link →</button>
+  </div>
+
+  <div id="loginStatus" style="margin-top: 20px; display: none;"></div>
+
+  <p style="margin-top: 28px; font-size: 11px; color: var(--text-faint);">First time on a device? You'll get an email with a sign-in link. Sessions stay valid for ~30 days, so you only need to do this occasionally.</p>
+</div>
+
 <div id="setupScreen" class="setup" style="display:none">
   <h2>INITIAL SETUP</h2>
   <p>To connect this tracker to your Supabase project, you need your project URL and anon key. Paste them below — they'll be saved in this browser.</p>
@@ -911,8 +1018,9 @@
     </div>
     <div class="header-actions">
       <div id="connStatus" class="conn-status"><span class="conn-dot"></span><span id="connText">connecting</span></div>
+      <span id="userChip" class="conn-status" style="border-color:var(--border);color:var(--text-dim)" title="">—</span>
       <button class="btn btn-ghost btn-sm" id="twitchBtn" onclick="onTwitchButtonClick()">🟣 Twitch</button>
-      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Config</button>
+      <button class="btn btn-ghost btn-sm" onclick="logout()" title="Sign out">↪ Sign Out</button>
       <button class="btn btn-primary" onclick="openGameModal()">+ New Game</button>
     </div>
   </header>
@@ -1098,6 +1206,28 @@
         </div>
       </div>
       <div class="field">
+        <label>Cover Image</label>
+        <div class="cover-uploader" id="coverUploader">
+          <div class="cover-preview" id="coverPreview">
+            <span class="cover-placeholder" id="coverPlaceholder">No cover</span>
+            <img id="coverPreviewImg" style="display:none">
+            <button type="button" class="cover-clear-btn" id="coverClearBtn" onclick="clearCoverImage()" style="display:none" title="Remove cover">×</button>
+          </div>
+          <div class="cover-drop" id="coverDrop">
+            <div class="cover-drop-prompt">
+              <div style="font-size:24px;color:var(--phosphor);margin-bottom:4px">⬆</div>
+              <div>Drag image here or <button type="button" class="cover-pick-btn" onclick="document.getElementById('coverFileInput').click()">choose file</button></div>
+              <div style="font-size:9px;color:var(--text-faint);letter-spacing:1.5px;margin-top:6px">JPG · PNG · WEBP · max 5MB</div>
+            </div>
+            <div class="cover-uploading" id="coverUploading" style="display:none">
+              <div class="cover-spinner">⣾</div>
+              <div id="coverUploadStatus">Uploading...</div>
+            </div>
+          </div>
+          <input type="file" id="coverFileInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+        </div>
+      </div>
+      <div class="field">
         <label>Notes</label>
         <textarea id="gameNotes" placeholder="General thoughts, plan, memorable moments..."></textarea>
       </div>
@@ -1158,6 +1288,12 @@
 
 <script>
 // ============================================================
+// CONFIG — hardcoded so all devices auto-connect
+// ============================================================
+const SUPABASE_URL = 'PASTE_YOUR_SUPABASE_URL_HERE';
+const SUPABASE_ANON_KEY = 'PASTE_YOUR_ANON_KEY_HERE';
+
+// ============================================================
 // STATE
 // ============================================================
 const STATUS_OPTS = [
@@ -1171,6 +1307,7 @@ const STATUS_OPTS = [
 ];
 
 let sb = null;
+let currentUser = null;
 let games = [];
 let sessions = [];
 let editingGameId = null;
@@ -1189,42 +1326,131 @@ function safeGet(k) { try { return localStorage.getItem(k); } catch(e) { return 
 function safeSet(k, v) { try { localStorage.setItem(k, v); return true; } catch(e) { return false; } }
 function safeRemove(k) { try { localStorage.removeItem(k); } catch(e) {} }
 
+function showLogin() {
+  document.getElementById('loginScreen').style.display = 'block';
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+}
 function showSetup() {
+  document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('setupScreen').style.display = 'block';
   document.getElementById('app').style.display = 'none';
 }
 function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('setupScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 }
 
-function init() {
-  // Always start by showing SOMETHING so the page isn't blank
-  const url = safeGet('sb_url');
-  const key = safeGet('sb_key');
+async function init() {
+  // Detect missing/template config
+  const credsConfigured = SUPABASE_URL && SUPABASE_URL !== 'PASTE_YOUR_SUPABASE_URL_HERE'
+    && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'PASTE_YOUR_ANON_KEY_HERE';
 
-  if (!url || !key) {
-    showSetup();
-    return;
+  if (!credsConfigured) {
+    // Fallback to old setup screen so dev/early-version still works
+    const url = safeGet('sb_url');
+    const key = safeGet('sb_key');
+    if (!url || !key) { showSetup(); return; }
+    try {
+      sb = window.supabase.createClient(url, key, {
+        auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true }
+      });
+    } catch (e) {
+      toast('Failed to connect: ' + e.message, true);
+      showSetup();
+      return;
+    }
+  } else {
+    if (!window.supabase || !window.supabase.createClient) {
+      toast('Supabase library failed to load — check internet', true);
+      return;
+    }
+    try {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true }
+      });
+    } catch (e) {
+      toast('Failed to connect: ' + e.message, true);
+      return;
+    }
   }
 
-  // We have saved credentials — try to connect
-  if (!window.supabase || !window.supabase.createClient) {
-    // Library didn't load (CDN blocked, offline, etc.)
-    toast('Supabase library failed to load — check internet connection', true);
-    showSetup();
-    return;
-  }
+  // Set up auth listener (handles magic-link callback automatically)
+  sb.auth.onAuthStateChange((event, session) => {
+    if (session && session.user) {
+      if (!currentUser || currentUser.id !== session.user.id) {
+        currentUser = session.user;
+        showApp();
+        renderUserChip();
+        renderStatusFilter();
+        loadAll();
+      }
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      games = [];
+      sessions = [];
+      showLogin();
+    }
+  });
 
-  try {
-    sb = window.supabase.createClient(url, key);
+  // Check for existing session
+  const { data } = await sb.auth.getSession();
+  if (data.session && data.session.user) {
+    currentUser = data.session.user;
     showApp();
+    renderUserChip();
     renderStatusFilter();
     loadAll();
-  } catch (e) {
-    toast('Failed to connect: ' + e.message, true);
-    showSetup();
+  } else {
+    showLogin();
   }
+}
+
+async function sendMagicLink() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const status = document.getElementById('loginStatus');
+  const btn = document.getElementById('loginBtn');
+  if (!email || !email.includes('@')) {
+    status.style.display = 'block';
+    status.style.color = 'var(--red)';
+    status.textContent = 'Please enter a valid email address.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  status.style.display = 'block';
+  status.style.color = 'var(--text-dim)';
+  status.textContent = 'Sending magic link...';
+  try {
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: location.origin + location.pathname }
+    });
+    if (error) throw error;
+    status.style.color = 'var(--phosphor)';
+    status.innerHTML = `✓ Check your inbox at <strong>${escapeHtml(email)}</strong>.<br>Click the link to sign in. You can close this tab.`;
+    btn.textContent = 'Link Sent';
+  } catch (e) {
+    status.style.color = 'var(--red)';
+    status.textContent = 'Failed: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = 'Send Magic Link →';
+  }
+}
+
+async function logout() {
+  if (!confirm('Sign out of Stream Log?')) return;
+  await sb.auth.signOut();
+  // onAuthStateChange will handle UI swap
+}
+
+function renderUserChip() {
+  const el = document.getElementById('userChip');
+  if (!el || !currentUser) return;
+  const email = currentUser.email || 'signed in';
+  el.textContent = email.length > 22 ? email.slice(0, 20) + '…' : email;
+  el.title = email;
 }
 
 function saveSetup() {
@@ -1235,15 +1461,12 @@ function saveSetup() {
     toast('Could not save to localStorage (is it disabled?)', true);
     return;
   }
-  init();
+  location.reload();
 }
 
 function openSettings() {
-  if (confirm('Reset connection? You\'ll need to re-enter your Supabase URL and key.')) {
-    safeRemove('sb_url');
-    safeRemove('sb_key');
-    location.reload();
-  }
+  // Now used to log out
+  logout();
 }
 
 // ============================================================
@@ -1440,6 +1663,7 @@ function openGameModal(id) {
   }
   renderGenreTags();
   document.getElementById('genreInput').value = '';
+  showCoverPreview(document.getElementById('gameCover').value || null);
   modal.classList.add('open');
   setTimeout(() => {
     const input = id ? document.getElementById('gameTitle') : document.getElementById('rawgSearch');
@@ -1558,6 +1782,7 @@ function pickRawgGame(payload) {
   const g = JSON.parse(decodeURIComponent(payload));
   document.getElementById('gameTitle').value = g.title || '';
   document.getElementById('gameCover').value = g.cover || '';
+  showCoverPreview(g.cover || null);
   if (Array.isArray(g.genres) && g.genres.length) {
     // Merge, dedupe
     g.genres.forEach(x => {
@@ -1623,7 +1848,7 @@ async function saveGame() {
       if (error) throw error;
       toast('Game updated');
     } else {
-      const { error } = await sb.from('games').insert(payload);
+      const { error } = await sb.from('games').insert({ ...payload, user_id: currentUser.id });
       if (error) throw error;
       toast('Game added');
     }
@@ -1765,7 +1990,7 @@ async function saveSession() {
       if (error) throw error;
       toast('Session updated');
     } else {
-      const { error } = await sb.from('sessions').insert(payload);
+      const { error } = await sb.from('sessions').insert({ ...payload, user_id: currentUser.id });
       if (error) throw error;
       // Auto-fill started_on if this is the first session and the field is empty
       const g = games.find(x => x.id === currentDetailGameId);
@@ -1812,6 +2037,154 @@ function formatDate(d) {
   if (!d) return '';
   const dt = new Date(d + 'T00:00:00');
   return dt.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ============================================================
+// COVER IMAGE UPLOAD
+// ============================================================
+const COVER_BUCKET = 'covers';
+const COVER_MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const COVER_RESIZE_MAX = 800; // resize down to max 800px on longest edge
+
+function showCoverPreview(url) {
+  const img = document.getElementById('coverPreviewImg');
+  const ph = document.getElementById('coverPlaceholder');
+  const clearBtn = document.getElementById('coverClearBtn');
+  if (url) {
+    img.src = url;
+    img.style.display = 'block';
+    ph.style.display = 'none';
+    clearBtn.style.display = 'block';
+  } else {
+    img.style.display = 'none';
+    img.removeAttribute('src');
+    ph.style.display = 'block';
+    clearBtn.style.display = 'none';
+  }
+}
+
+function clearCoverImage() {
+  document.getElementById('gameCover').value = '';
+  showCoverPreview(null);
+}
+
+// Sync URL input → preview as user types/pastes a URL
+function onCoverUrlInput() {
+  const v = document.getElementById('gameCover').value.trim();
+  showCoverPreview(v || null);
+}
+
+// Resize image client-side to keep uploads small
+async function resizeImageFile(file, maxEdge) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      if (Math.max(w, h) > maxEdge) {
+        const scale = maxEdge / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      // Keep PNG for transparency, otherwise convert to JPEG for smaller size
+      const isPng = file.type === 'image/png';
+      const mime = isPng ? 'image/png' : 'image/jpeg';
+      const ext = isPng ? 'png' : 'jpg';
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error('Resize failed')); return; }
+        resolve({ blob, ext, mime });
+      }, mime, 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
+    img.src = url;
+  });
+}
+
+async function uploadCoverFile(file) {
+  if (!currentUser) { toast('Sign in first', true); return; }
+  if (!file || !file.type.startsWith('image/')) { toast('Not an image file', true); return; }
+  if (file.size > COVER_MAX_BYTES) { toast('Image too large (>5MB)', true); return; }
+
+  const drop = document.getElementById('coverDrop');
+  const prompt = drop.querySelector('.cover-drop-prompt');
+  const uploading = document.getElementById('coverUploading');
+  const status = document.getElementById('coverUploadStatus');
+  prompt.style.display = 'none';
+  uploading.style.display = 'block';
+  status.textContent = 'Resizing...';
+
+  try {
+    // Resize to keep storage small
+    const { blob, ext, mime } = await resizeImageFile(file, COVER_RESIZE_MAX);
+    status.textContent = 'Uploading...';
+
+    // Path: <user_id>/<timestamp>-<random>.<ext> → keeps each user's images in their own folder
+    const filename = `${currentUser.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const { error: uploadError } = await sb.storage
+      .from(COVER_BUCKET)
+      .upload(filename, blob, { contentType: mime, cacheControl: '31536000', upsert: false });
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: urlData } = sb.storage.from(COVER_BUCKET).getPublicUrl(filename);
+    const publicUrl = urlData?.publicUrl;
+    if (!publicUrl) throw new Error('Could not get public URL');
+
+    document.getElementById('gameCover').value = publicUrl;
+    showCoverPreview(publicUrl);
+    toast('Cover uploaded');
+  } catch (e) {
+    toast('Upload failed: ' + (e.message || e), true);
+  } finally {
+    uploading.style.display = 'none';
+    prompt.style.display = 'block';
+  }
+}
+
+function setupCoverDropZone() {
+  const drop = document.getElementById('coverDrop');
+  const fileInput = document.getElementById('coverFileInput');
+  if (!drop || !fileInput || drop.dataset.wired) return;
+  drop.dataset.wired = '1';
+
+  fileInput.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) uploadCoverFile(f);
+    e.target.value = ''; // reset so same file can be picked again
+  });
+
+  ['dragenter', 'dragover'].forEach(ev => {
+    drop.addEventListener(ev, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'dragend'].forEach(ev => {
+    drop.addEventListener(ev, e => {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.classList.remove('dragover');
+    });
+  });
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.remove('dragover');
+    const f = e.dataTransfer?.files && e.dataTransfer.files[0];
+    if (f) uploadCoverFile(f);
+  });
+
+  // Wire URL input → preview
+  const urlInput = document.getElementById('gameCover');
+  if (urlInput) urlInput.addEventListener('input', onCoverUrlInput);
 }
 
 // ============================================================
@@ -2175,7 +2548,8 @@ async function twitchImportSelected() {
       duration_minutes: twitchDurationToMin(v.duration) || null,
       peak_viewers: null,
       notes: v.title || null,
-      twitch_vod_id: v.id
+      twitch_vod_id: v.id,
+      user_id: currentUser.id
     };
     try {
       const { error } = await sb.from('sessions').insert(payload);
@@ -2232,6 +2606,7 @@ function bootstrap() {
     genreInput.addEventListener('keydown', onGenreKeydown);
     genreInput.addEventListener('blur', e => { if (e.target.value) { addGenre(e.target.value); e.target.value = ''; } });
   }
+  setupCoverDropZone();
   // Close RAWG results if clicking outside
   document.addEventListener('click', e => {
     if (!e.target.closest('.rawg-search-field')) {
