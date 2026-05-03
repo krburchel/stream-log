@@ -2922,7 +2922,15 @@ function twitchDisconnect() {
 async function handleTwitchRedirect() {
   // Check URL hash for OAuth response
   if (!location.hash || !location.hash.includes('access_token=')) return false;
+
+  // IMPORTANT: Supabase magic-link login also lands here with #access_token=...
+  // Only treat the hash as a Twitch redirect if we actually initiated a Twitch
+  // OAuth flow (pending_auth flag set) AND the hash contains a 'state' param
+  // (Twitch implicit grant always includes one; Supabase magic links don't).
+  if (!twitchGet('pending_auth')) return false;
   const params = new URLSearchParams(location.hash.slice(1));
+  if (!params.has('state')) return false;
+
   const token = params.get('access_token');
   const state = params.get('state');
   const expectedState = twitchGet('oauth_state');
